@@ -53,9 +53,37 @@ class HashEmbedder(Embedder):
         return self._embed(text)
 
 
+class STEmbedder(Embedder):
+    """基于 sentence-transformers 的真实语义嵌入（本地模型，无需 API）。
+
+    推荐模型：BAAI/bge-small-zh-v1.5（中文，约 95MB，CPU 可跑）。
+    首次运行会从 HuggingFace 下载模型（可设 HF_ENDPOINT 使用国内镜像）。
+    """
+
+    def __init__(self, model: str = "BAAI/bge-small-zh-v1.5"):
+        from sentence_transformers import SentenceTransformer
+
+        self.model_name = model or "BAAI/bge-small-zh-v1.5"
+        self.model = SentenceTransformer(self.model_name)
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        vecs = self.model.encode(
+            texts, batch_size=16, normalize_embeddings=True, show_progress_bar=False
+        )
+        return [v.tolist() for v in vecs]
+
+    def embed_query(self, text: str) -> List[float]:
+        vec = self.model.encode(
+            [text], normalize_embeddings=True, show_progress_bar=False
+        )[0]
+        return vec.tolist()
+
+
 def build_embedder(backend: str = "hash", model: str = "", **kwargs) -> Embedder:
     if backend == "hash":
         return HashEmbedder(**kwargs)
+    if backend in ("st", "sentence-transformers", "bge"):
+        return STEmbedder(model=model)
     if backend in ("openai", "deepseek"):
         # 真实 embedding 走 OpenAI 兼容接口（按需开启）
         from .embedding_openai import OpenAIEmbedder
